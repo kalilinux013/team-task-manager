@@ -1,0 +1,1069 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="layout">
+  <aside class="sidebar">
+    <div class="logo">⚡ TaskFlow</div>
+    <nav>
+      <a class="nav-item active" data-tab="overview"><i class="fas fa-chart-pie"></i> Overview</a>
+      <a class="nav-item" data-tab="projects"><i class="fas fa-folder"></i> Projects</a>
+      <a class="nav-item" data-tab="tasks"><i class="fas fa-list-check"></i> Tasks</a>
+      <a class="nav-item admin-only" data-tab="users"><i class="fas fa-users-gear"></i> Users</a>
+      <a class="nav-item admin-only" data-tab="leaderboard"><i class="fas fa-trophy"></i> Leaderboard</a>
+    </nav>
+    <div class="user-card">
+      <div class="avatar" id="avatar">U</div>
+      <div style="flex:1;overflow:hidden;">
+        <div id="userName" style="font-weight:600;font-size:14px;"></div>
+        <div id="userRole" style="color:var(--muted);font-size:12px;"></div>
+      </div>
+      <i class="fas fa-sign-out-alt" style="cursor:pointer;color:var(--muted);" onclick="logout()"></i>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1 id="pageTitle">Overview</h1>
+      <div class="topbar-actions">
+        <div class="notification-bell" id="notifBell">
+          <i class="fas fa-bell"></i>
+          <span class="badge" id="notifCount" style="display:none;">0</span>
+        </div>
+        <button class="btn btn-primary" id="newBtn" style="width:auto;">
+          <i class="fas fa-plus"></i> <span id="newBtnLabel">New Project</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Notification dropdown -->
+    <div class="notif-dropdown" id="notifDropdown">
+      <h3>🔔 Notifications</h3>
+      <div id="notifList"></div>
+    </div>
+
+    <!-- Overview tab -->
+    <section id="overview" class="tab-content">
+      <div class="stats-grid">
+  <div class="stat-card clickable" onclick="filterAndShow('all')">
+    <div class="icon bg-purple"><i class="fas fa-folder"></i></div>
+    <div class="value" id="statProjects">0</div>
+    <div class="label">Projects <i class="fas fa-arrow-right" style="font-size:10px;opacity:0.5;"></i></div>
+  </div>
+  <div class="stat-card clickable" onclick="filterAndShow('all-tasks')">
+    <div class="icon bg-pink"><i class="fas fa-list-check"></i></div>
+    <div class="value" id="statTasks">0</div>
+    <div class="label">Total Tasks <i class="fas fa-arrow-right" style="font-size:10px;opacity:0.5;"></i></div>
+  </div>
+  <div class="stat-card clickable" onclick="filterAndShow('completed')">
+    <div class="icon bg-cyan"><i class="fas fa-circle-check"></i></div>
+    <div class="value" id="statDone">0</div>
+    <div class="label">Completed <i class="fas fa-arrow-right" style="font-size:10px;opacity:0.5;"></i></div>
+  </div>
+  <div class="stat-card clickable" onclick="filterAndShow('overdue')">
+    <div class="icon bg-amber"><i class="fas fa-fire"></i></div>
+    <div class="value" id="statOverdue">0</div>
+    <div class="label">Overdue <i class="fas fa-arrow-right" style="font-size:10px;opacity:0.5;"></i></div>
+  </div>
+</div>
+
+      <h2 style="margin:24px 0 16px;">Task Board</h2>
+      <div class="kanban">
+        <div class="column"><h3>📋 Todo <span class="count-badge" id="cTodo">0</span></h3>
+          <div id="colTodo"></div></div>
+        <div class="column"><h3>⚡ In Progress <span class="count-badge" id="cProg">0</span></h3>
+          <div id="colProg"></div></div>
+        <div class="column"><h3>✅ Done <span class="count-badge" id="cDone">0</span></h3>
+          <div id="colDone"></div></div>
+      </div>
+    </section>
+
+    <!-- Projects tab -->
+    <section id="projects" class="tab-content" style="display:none;">
+      <div id="projectsView">
+        <div class="projects-grid" id="projectsGrid"></div>
+      </div>
+      <div id="projectDetailView" style="display:none;"></div>
+    </section>
+
+    <!-- Tasks tab -->
+    <section id="tasks" class="tab-content" style="display:none;">
+      <div id="taskList"></div>
+    </section>
+
+    <!-- Users tab (Admin only) -->
+    <section id="users" class="tab-content" style="display:none;">
+      <div class="users-table" id="usersTable"></div>
+    </section>
+
+    <!-- Leaderboard tab -->
+    <section id="leaderboard" class="tab-content" style="display:none;">
+      <div class="leaderboard" id="leaderboardList"></div>
+    </section>
+  </main>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal" id="modalBody"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ============== AUTH CHECK ==============
+if (!api.token()) window.location.href = '/';
+const user = api.user();
+document.getElementById('userName').textContent = user?.name || '';
+document.getElementById('userRole').textContent = user?.role || '';
+document.getElementById('avatar').textContent = (user?.name || 'U')[0].toUpperCase();
+
+if (user.role !== 'Admin') {
+  document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
+}
+
+let projects = [], tasks = [], users = [], alerts = [], leaderboard = [];
+const PHASES = ['Planning', 'Development', 'Testing', 'Deployment', 'Completed'];
+
+// ============== LOAD DATA ==============
+async function loadData() {
+  try {
+    [projects, tasks, users, alerts, leaderboard] = await Promise.all([
+      api.get('/projects/'),
+      api.get('/tasks/'),
+      api.get('/users/'),
+      api.get('/projects/alerts'),
+      api.get('/users/leaderboard'),
+    ]);
+    renderOverview();
+    renderProjects();
+    renderTasks();
+    renderUsers();
+    renderLeaderboard();
+    renderNotifications();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ============== NOTIFICATIONS ==============
+function renderNotifications() {
+  const count = alerts.length;
+  const badge = document.getElementById('notifCount');
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'inline-block';
+  } else {
+    badge.style.display = 'none';
+  }
+  const list = document.getElementById('notifList');
+  if (count === 0) {
+    list.innerHTML = '<p style="padding:20px;color:var(--muted);text-align:center;">All clear! 🎉</p>';
+    return;
+  }
+  list.innerHTML = alerts.map(a => `
+    <div class="notif-item ${a.severity}" onclick="openProjectDetail(${a.project_id})">
+      <div class="title">${a.type === 'overdue' ? '🚨' : a.type === 'due_soon' ? '⚠️' : '⏰'} ${a.title}</div>
+      <div class="msg">${a.message}</div>
+    </div>
+  `).join('');
+}
+
+document.getElementById('notifBell').onclick = (e) => {
+  e.stopPropagation();
+  document.getElementById('notifDropdown').classList.toggle('active');
+};
+document.body.addEventListener('click', () => {
+  document.getElementById('notifDropdown').classList.remove('active');
+});
+
+// Auto-show overdue toast on load
+function showOverdueToasts() {
+  const overdueAlerts = alerts.filter(a => a.severity === 'high');
+  if (overdueAlerts.length > 0) {
+    setTimeout(() => {
+      toast(`⚠️ ${overdueAlerts.length} project(s) overdue!`, 'error');
+    }, 1500);
+  }
+  const dueSoon = alerts.filter(a => a.severity === 'medium');
+  if (dueSoon.length > 0) {
+    setTimeout(() => {
+      toast(`⏰ ${dueSoon.length} project(s) due soon`, 'success');
+    }, 3000);
+  }
+}
+
+// ============== OVERVIEW ==============
+function renderOverview() {
+  document.getElementById('statProjects').textContent = projects.length;
+  document.getElementById('statTasks').textContent = tasks.length;
+  document.getElementById('statDone').textContent = tasks.filter(t => t.status === 'Done').length;
+  document.getElementById('statOverdue').textContent = tasks.filter(t => t.overdue).length;
+
+  const cols = { 'Todo': [], 'In Progress': [], 'Done': [] };
+  tasks.forEach(t => cols[t.status]?.push(t));
+
+  document.getElementById('cTodo').textContent = cols['Todo'].length;
+  document.getElementById('cProg').textContent = cols['In Progress'].length;
+  document.getElementById('cDone').textContent = cols['Done'].length;
+
+  document.getElementById('colTodo').innerHTML = cols['Todo'].map(taskCardHTML).join('') || '<p style="color:var(--muted);font-size:13px;">No tasks</p>';
+  document.getElementById('colProg').innerHTML = cols['In Progress'].map(taskCardHTML).join('') || '<p style="color:var(--muted);font-size:13px;">No tasks</p>';
+  document.getElementById('colDone').innerHTML = cols['Done'].map(taskCardHTML).join('') || '<p style="color:var(--muted);font-size:13px;">No tasks</p>';
+
+  gsap.from('.task-card', { opacity: 0, y: 10, duration: 0.3, stagger: 0.03 });
+}
+
+function taskCardHTML(t) {
+  const pri = `tag-${t.priority.toLowerCase()}`;
+  const overdue = t.overdue ? `<span class="tag tag-overdue">OVERDUE</span>` : '';
+  const due = t.due_date ? new Date(t.due_date).toLocaleDateString() : '';
+  return `
+    <div class="task-card" onclick="editTask(${t.id})">
+      <div class="title">${t.title}</div>
+      <div class="meta">
+        <span class="tag ${pri}">${t.priority}</span>
+        ${overdue}
+        ${due ? `<span><i class="far fa-calendar"></i> ${due}</span>` : ''}
+        ${t.assignee ? `<span><i class="far fa-user"></i> ${t.assignee.name}</span>` : ''}
+      </div>
+    </div>`;
+}
+
+// ============== PROJECTS ==============
+function renderProjects() {
+  const grid = document.getElementById('projectsGrid');
+  if (projects.length === 0) {
+    grid.innerHTML = `<p style="color:var(--muted);">No projects yet. ${user.role==='Admin'?'Create one to get started!':'Ask an Admin to add you to a project.'}</p>`;
+    return;
+  }
+  grid.innerHTML = projects.map(p => {
+    const days = p.days_remaining;
+    const daysText = days === null ? '' :
+      days < 0 ? `<span style="color:var(--danger);">⚠️ ${Math.abs(days)}d overdue</span>` :
+      days <= 3 ? `<span style="color:var(--warning);">⏰ ${days}d left</span>` :
+      `<span>📅 ${days}d left</span>`;
+    return `
+    <div class="project-card" onclick="openProjectDetail(${p.id})">
+      <h3>${p.name}</h3>
+      <span class="phase-badge phase-${p.phase}">${p.phase}</span>
+      <p style="color:var(--muted);margin:10px 0 12px;font-size:13px;">${p.description || 'No description'}</p>
+      <div class="progress-bar"><div class="progress-fill" style="width:${p.progress}%"></div></div>
+      <div style="display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:10px;">
+        <span>${p.progress}% complete</span>
+        ${daysText}
+      </div>
+      <div style="display:flex;justify-content:space-between;color:var(--muted);font-size:12px;margin-top:8px;">
+        <span><i class="fas fa-list-check"></i> ${p.completed_tasks}/${p.task_count}</span>
+        <span><i class="fas fa-users"></i> ${p.members.length}</span>
+      </div>
+    </div>`;
+  }).join('');
+  gsap.from('.project-card', { opacity: 0, y: 20, duration: 0.4, stagger: 0.06 });
+}
+
+async function openProjectDetail(pid) {
+  document.querySelector('[data-tab="projects"]').click();
+  document.getElementById('projectsView').style.display = 'none';
+  const detailView = document.getElementById('projectDetailView');
+  detailView.style.display = 'block';
+
+  try {
+    const p = await api.get(`/projects/${pid}`);
+    const reports = await api.get(`/projects/${pid}/reports`);
+    const projectTasks = tasks.filter(t => t.project_id === pid);
+
+    const phaseIdx = PHASES.indexOf(p.phase);
+    const isManager = user.role === 'Admin' || p.owner.id === user.id;
+
+    const phaseHTML = PHASES.map((ph, i) => `
+      <div class="phase-step ${i < phaseIdx ? 'done' : i === phaseIdx ? 'active' : ''}"
+           ${isManager ? `onclick="updatePhase(${pid},'${ph}')"` : ''}>
+        <div class="dot">${i < phaseIdx ? '✓' : i+1}</div>
+        <div class="label">${ph}</div>
+        <div class="phase-line"></div>
+      </div>
+    `).join('');
+
+    const memberChips = p.members.map(m => `
+      <div class="chip">
+        <div class="mini-avatar">${m.name[0].toUpperCase()}</div>
+        <span>${m.name}</span>
+        <span style="color:var(--muted);font-size:11px;">${m.designation}</span>
+        ${user.role==='Admin' ? `<i class="fas fa-times remove" onclick="event.stopPropagation();removeMember(${pid},${m.id})"></i>` : ''}
+      </div>
+    `).join('');
+
+    const reportsHTML = reports.length === 0
+      ? '<p style="color:var(--muted);">No progress reports yet.</p>'
+      : reports.map(r => `
+          <div class="report-item">
+            <div class="report-head">
+              <span class="report-author">${r.user.name} <span style="color:var(--muted);font-size:12px;">(${r.user.designation})</span></span>
+              <span class="report-date">${new Date(r.created_at).toLocaleString()}</span>
+            </div>
+            <div class="progress-bar" style="margin:6px 0;"><div class="progress-fill" style="width:${r.progress_percentage}%"></div></div>
+            <div style="font-size:12px;color:var(--muted);">${r.progress_percentage}% reported</div>
+            <div class="report-content">${r.content}</div>
+          </div>
+        `).join('');
+
+    const dueText = p.due_date ? new Date(p.due_date).toLocaleDateString() : 'Not set';
+    const startText = p.start_date ? new Date(p.start_date).toLocaleDateString() : 'Not set';
+
+    detailView.innerHTML = `
+      <button class="back-btn" onclick="closeProjectDetail()"><i class="fas fa-arrow-left"></i> Back to Projects</button>
+      <div class="project-detail">
+        <div class="detail-header">
+          <div>
+            <h2>${p.name}</h2>
+            <span class="phase-badge phase-${p.phase}">${p.phase}</span>
+            <p style="color:var(--muted);margin-top:8px;">${p.description || 'No description'}</p>
+          </div>
+          <div style="display:flex;gap:8px;">
+            ${isManager ? `<button class="btn btn-ghost" onclick="editProject(${pid})"><i class="fas fa-pen"></i> Edit</button>` : ''}
+            ${user.role==='Admin' ? `<button class="btn btn-danger" onclick="deleteProject(${pid})"><i class="fas fa-trash"></i></button>` : ''}
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:20px 0;">
+          <div><div style="color:var(--muted);font-size:12px;">START DATE</div><div style="font-weight:600;">${startText}</div></div>
+          <div><div style="color:var(--muted);font-size:12px;">DUE DATE</div><div style="font-weight:600;">${dueText}</div></div>
+          <div><div style="color:var(--muted);font-size:12px;">DAYS LEFT</div>
+            <div style="font-weight:600;color:${p.days_remaining<0?'var(--danger)':p.days_remaining<=3?'var(--warning)':'var(--text)'}">
+              ${p.days_remaining===null?'—':p.days_remaining<0?`${Math.abs(p.days_remaining)}d overdue`:`${p.days_remaining} days`}
+            </div>
+          </div>
+          <div><div style="color:var(--muted);font-size:12px;">TASKS</div><div style="font-weight:600;">${projectTasks.filter(t=>t.status==='Done').length}/${projectTasks.length}</div></div>
+        </div>
+
+        <h3 style="margin-top:8px;">📊 Project Progress (${p.progress}%)</h3>
+        <div class="progress-bar"><div class="progress-fill" style="width:${p.progress}%"></div></div>
+
+        <h3 style="margin-top:24px;">🎯 Phase Tracking</h3>
+        <div class="phase-tracker">${phaseHTML}</div>
+
+        <h3 style="margin-top:24px;">👥 Team Members
+          ${user.role==='Admin' ? `<button class="btn btn-primary" style="float:right;width:auto;padding:6px 14px;font-size:13px;" onclick="showAddMemberForm(${pid})"><i class="fas fa-plus"></i> Add</button>` : ''}
+        </h3>
+        <div class="member-chips">${memberChips || '<span style="color:var(--muted);">No members yet</span>'}</div>
+
+        <h3 style="margin-top:24px;">📝 Progress Reports
+          <button class="btn btn-primary" style="float:right;width:auto;padding:6px 14px;font-size:13px;" onclick="showReportForm(${pid})"><i class="fas fa-plus"></i> Add Report</button>
+        </h3>
+        <div class="report-timeline">${reportsHTML}</div>
+
+        <h3 style="margin-top:24px;">✅ Tasks (${projectTasks.length})</h3>
+        <div style="display:grid;gap:12px;margin-top:12px;">
+          ${projectTasks.map(taskCardHTML).join('') || '<p style="color:var(--muted);">No tasks yet.</p>'}
+        </div>
+      </div>
+    `;
+    gsap.from('.project-detail', { opacity: 0, y: 20, duration: 0.5 });
+    gsap.from('.phase-step', { scale: 0, duration: 0.4, stagger: 0.1, ease: 'back.out(1.5)' });
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+function closeProjectDetail() {
+  document.getElementById('projectDetailView').style.display = 'none';
+  document.getElementById('projectsView').style.display = 'block';
+}
+
+async function updatePhase(pid, phase) {
+  try {
+    await api.patch(`/projects/${pid}`, { phase });
+    toast(`Phase updated to ${phase} ✨`);
+    await loadData();
+    openProjectDetail(pid);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+async function deleteProject(pid) {
+  if (!confirm('Delete this project and all its tasks?')) return;
+  try {
+    await api.del(`/projects/${pid}`);
+    toast('Project deleted');
+    closeProjectDetail();
+    loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ============== TASKS ==============
+
+
+//yha se
+// ============== STAT CARD FILTER ==============
+let taskFilter = 'all';
+
+function filterAndShow(filter) {
+  taskFilter = filter;
+  if (filter === 'all') {
+    // Go to projects tab
+    document.querySelector('[data-tab="projects"]').click();
+  } else {
+    // Go to tasks tab with filter
+    document.querySelector('[data-tab="tasks"]').click();
+    renderTasks();
+  }
+}
+//yha tk
+
+function renderTasks() {
+  const list = document.getElementById('taskList');
+  let filtered = tasks;
+  let title = 'All Tasks';
+
+  if (taskFilter === 'completed') {
+    filtered = tasks.filter(t => t.status === 'Done');
+    title = '✅ Completed Tasks';
+  } else if (taskFilter === 'overdue') {
+    filtered = tasks.filter(t => t.overdue);
+    title = '🔥 Overdue Tasks';
+  } else if (taskFilter === 'all-tasks') {
+    title = '📋 All Tasks';
+  }
+
+  if (filtered.length === 0) {
+    list.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <h3>${title}</h3>
+        ${taskFilter !== 'all' ? `<button class="btn btn-ghost" onclick="taskFilter='all-tasks';renderTasks();" style="width:auto;padding:6px 14px;font-size:13px;">Show All</button>` : ''}
+      </div>
+      <p style="color:var(--muted);">No tasks match this filter.</p>`;
+    return;
+  }
+  list.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <h3>${title} (${filtered.length})</h3>
+      ${taskFilter !== 'all-tasks' && taskFilter !== 'all' ? `<button class="btn btn-ghost" onclick="taskFilter='all-tasks';renderTasks();" style="width:auto;padding:6px 14px;font-size:13px;">Show All</button>` : ''}
+    </div>
+    <div style="display:grid;gap:12px;">${filtered.map(taskCardHTML).join('')}</div>`;
+  gsap.from('.task-card', { opacity: 0, y: 10, duration: 0.3, stagger: 0.03 });
+}
+
+// ============== USERS (Admin) ==============
+function renderUsers() {
+  if (user.role !== 'Admin') return;
+  const t = document.getElementById('usersTable');
+  t.innerHTML = `
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Email</th><th>Role</th><th>Designation</th><th>Live Performance</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        ${users.map(u => {
+          const perf = u.performance;
+          const trend = perf.completion_rate >= 75 ? '🔥' : perf.completion_rate >= 50 ? '📈' : perf.completion_rate >= 25 ? '➡️' : '📉';
+          return `
+          <tr>
+            <td><div style="display:flex;align-items:center;gap:10px;">
+              <div class="mini-avatar">${u.name[0].toUpperCase()}</div>${u.name}</div></td>
+            <td>${u.email}</td>
+            <td><span class="role-badge role-${u.role}">${u.role}</span></td>
+            <td>${u.designation}</td>
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <div style="flex:1;min-width:80px;">
+                  <div class="progress-bar" style="height:6px;margin:0;">
+                    <div class="progress-fill" style="width:${perf.completion_rate}%"></div>
+                  </div>
+                  <div style="font-size:11px;color:var(--muted);margin-top:3px;">
+                    ${trend} ${perf.completed}/${perf.total} (${perf.completion_rate}%)
+                  </div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <button class="icon-btn" onclick="editUser(${u.id})" title="Edit"><i class="fas fa-pen"></i></button>
+              ${u.role !== 'Admin' ? `<button class="icon-btn danger" onclick="deleteUser(${u.id})" title="Delete"><i class="fas fa-trash"></i></button>` : '<span style="color:var(--muted);font-size:11px;padding:0 8px;">🛡️ Protected</span>'}
+            </td>
+          </tr>
+        `}).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ============== LEADERBOARD ==============
+// ============== LEADERBOARD (Admin only) ==============
+function renderLeaderboard() {
+  if (user.role !== 'Admin') return;
+  const list = document.getElementById('leaderboardList');
+  
+  // Top 3 leaderboard cards
+  const topPerformers = leaderboard.map((u, i) => `
+    <div class="leader-card ${i === 0 ? 'top' : ''}">
+      <div class="leader-rank">${i === 0 ? '🏆' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`}</div>
+      <div class="mini-avatar" style="width:48px;height:48px;font-size:18px;">${u.name[0].toUpperCase()}</div>
+      <div class="leader-info">
+        <div class="name">${u.name} ${u.badge ? `<span class="badge-pill">${u.badge}</span>` : ''}</div>
+        <div class="designation">${u.designation} · ${u.role}</div>
+        <div style="color:var(--muted);font-size:12px;margin-top:4px;">
+          ✅ ${u.performance.completed} done · 
+          ⚡ ${u.performance.in_progress} active · 
+          🔥 ${u.performance.overdue} overdue
+        </div>
+      </div>
+      <div class="leader-stats">
+        <div class="score">${u.performance.score}</div>
+        <div class="label">${u.performance.completion_rate}% rate</div>
+      </div>
+    </div>
+  `).join('') || '<p style="color:var(--muted);">No data yet.</p>';
+
+  // Progress update section - detailed view per user
+  const progressSection = `
+    <div style="margin-top:40px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <h2>📊 Performance Progress Tracker</h2>
+        <button class="btn btn-ghost" onclick="loadData()" style="width:auto;padding:8px 16px;font-size:13px;">
+          <i class="fas fa-sync"></i> Refresh
+        </button>
+      </div>
+      <p style="color:var(--muted);margin-bottom:20px;font-size:13px;">
+        Real-time performance metrics. Updates automatically every 15 seconds.
+      </p>
+      <div style="display:grid;gap:16px;">
+        ${leaderboard.map(u => {
+          const perf = u.performance;
+          const trend = perf.completion_rate >= 75 ? { icon: '🔥', label: 'Excellent', color: 'var(--success)' } 
+                      : perf.completion_rate >= 50 ? { icon: '📈', label: 'Good', color: 'var(--accent)' }
+                      : perf.completion_rate >= 25 ? { icon: '➡️', label: 'Average', color: 'var(--warning)' }
+                      : { icon: '📉', label: 'Needs Improvement', color: 'var(--danger)' };
+          
+          return `
+            <div class="performance-card">
+              <div class="perf-header">
+                <div style="display:flex;align-items:center;gap:14px;">
+                  <div class="mini-avatar" style="width:44px;height:44px;font-size:16px;">${u.name[0].toUpperCase()}</div>
+                  <div>
+                    <div style="font-weight:600;font-size:15px;">${u.name}</div>
+                    <div style="color:var(--muted);font-size:12px;">${u.designation} · <span class="role-badge role-${u.role}" style="font-size:10px;">${u.role}</span></div>
+                  </div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:24px;">${trend.icon}</div>
+                  <div style="font-size:11px;color:${trend.color};font-weight:600;">${trend.label}</div>
+                </div>
+              </div>
+
+              <div style="margin:16px 0 8px;display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-size:13px;color:var(--muted);">Completion Rate</span>
+                <span style="font-weight:700;font-size:18px;">${perf.completion_rate}%</span>
+              </div>
+              <div class="progress-bar"><div class="progress-fill" style="width:${perf.completion_rate}%"></div></div>
+
+              <div class="perf-stats-grid">
+                <div class="perf-stat">
+                  <div class="perf-stat-value" style="color:var(--success);">${perf.completed}</div>
+                  <div class="perf-stat-label">✅ Completed</div>
+                </div>
+                <div class="perf-stat">
+                  <div class="perf-stat-value" style="color:var(--accent);">${perf.in_progress}</div>
+                  <div class="perf-stat-label">⚡ In Progress</div>
+                </div>
+                <div class="perf-stat">
+                  <div class="perf-stat-value">${perf.total}</div>
+                  <div class="perf-stat-label">📋 Total Tasks</div>
+                </div>
+                <div class="perf-stat">
+                  <div class="perf-stat-value" style="color:var(--danger);">${perf.overdue}</div>
+                  <div class="perf-stat-label">🔥 Overdue</div>
+                </div>
+                <div class="perf-stat">
+                  <div class="perf-stat-value" style="background:linear-gradient(135deg,var(--primary),var(--secondary));-webkit-background-clip:text;-webkit-text-fill-color:transparent;">${perf.score}</div>
+                  <div class="perf-stat-label">⭐ Score</div>
+                </div>
+                <div class="perf-stat">
+                  <button class="btn btn-ghost" style="width:100%;padding:8px;font-size:12px;" onclick="viewUserTasks(${u.id})">
+                    <i class="fas fa-eye"></i> View Tasks
+                  </button>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('') || '<p style="color:var(--muted);">No users yet.</p>'}
+      </div>
+    </div>
+  `;
+
+  list.innerHTML = `
+    <h2 style="margin-bottom:20px;">🏆 Top Performers</h2>
+    ${topPerformers}
+    ${progressSection}
+  `;
+  
+  gsap.from('.leader-card', { opacity: 0, x: -30, duration: 0.5, stagger: 0.1 });
+  gsap.from('.performance-card', { opacity: 0, y: 20, duration: 0.5, stagger: 0.08, delay: 0.3 });
+}
+
+// View tasks of a specific user
+function viewUserTasks(uid) {
+  const u = users.find(x => x.id === uid);
+  if (!u) return;
+  const userTasks = tasks.filter(t => t.assignee && t.assignee.id === uid);
+  const taskListHTML = userTasks.length === 0
+    ? '<p style="color:var(--muted);">No tasks assigned to this user.</p>'
+    : userTasks.map(t => {
+        const statusColor = t.status === 'Done' ? 'var(--success)' : t.status === 'In Progress' ? 'var(--accent)' : 'var(--muted)';
+        const due = t.due_date ? new Date(t.due_date).toLocaleDateString() : 'No due date';
+        return `
+          <div style="padding:12px;background:rgba(255,255,255,0.04);border-radius:10px;margin-bottom:10px;border-left:3px solid ${statusColor};">
+            <div style="display:flex;justify-content:space-between;align-items:center;">
+              <div style="font-weight:600;font-size:14px;">${t.title}</div>
+              <span style="color:${statusColor};font-size:12px;font-weight:600;">${t.status}</span>
+            </div>
+            <div style="display:flex;gap:12px;margin-top:6px;font-size:12px;color:var(--muted);">
+              <span><i class="far fa-calendar"></i> ${due}</span>
+              <span class="tag tag-${t.priority.toLowerCase()}" style="padding:2px 8px;font-size:10px;">${t.priority}</span>
+              ${t.overdue ? '<span class="tag tag-overdue" style="padding:2px 8px;font-size:10px;">OVERDUE</span>' : ''}
+              ${t.project_name ? `<span>📁 ${t.project_name}</span>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+  openModal(`
+    <h2>${u.name}'s Tasks</h2>
+    <p style="color:var(--muted);margin-bottom:16px;">${u.designation} · ${u.performance.completed}/${u.performance.total} completed (${u.performance.completion_rate}%)</p>
+    <div class="progress-bar" style="margin-bottom:16px;"><div class="progress-fill" style="width:${u.performance.completion_rate}%"></div></div>
+    <div style="max-height:400px;overflow-y:auto;">${taskListHTML}</div>
+    <div style="display:flex;gap:12px;margin-top:16px;">
+      <button type="button" class="btn btn-primary" onclick="closeModal()" style="flex:1;">Close</button>
+    </div>
+  `);
+}
+
+// ============== TAB SWITCHING ==============
+document.querySelectorAll('.nav-item').forEach(n => {
+  n.onclick = () => {
+    document.querySelectorAll('.nav-item').forEach(x => x.classList.remove('active'));
+    n.classList.add('active');
+    const tab = n.dataset.tab;
+    document.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+    document.getElementById(tab).style.display = 'block';
+    document.getElementById('pageTitle').textContent = tab[0].toUpperCase() + tab.slice(1);
+    const labels = { projects: 'New Project', tasks: 'New Task', users: 'New User', overview: 'New Project', leaderboard: 'New Project' };
+    document.getElementById('newBtnLabel').textContent = labels[tab] || 'New';
+    document.getElementById('newBtn').style.display = (tab === 'leaderboard') ? 'none' : 'inline-flex';
+    if (tab === 'projects') {
+      document.getElementById('projectsView').style.display = 'block';
+      document.getElementById('projectDetailView').style.display = 'none';
+    }
+    gsap.from(`#${tab}`, { opacity: 0, y: 20, duration: 0.5 });
+  };
+});
+
+// ============== MODAL ==============
+function openModal(html) {
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('modal').classList.add('active');
+  gsap.from('.modal', { scale: 0.9, opacity: 0, duration: 0.3, ease: 'back.out(1.5)' });
+}
+function closeModal() { document.getElementById('modal').classList.remove('active'); }
+document.getElementById('modal').onclick = (e) => { if (e.target.id === 'modal') closeModal(); };
+
+// ============== NEW BUTTON ==============
+document.getElementById('newBtn').onclick = () => {
+  const active = document.querySelector('.nav-item.active').dataset.tab;
+  if (active === 'tasks') showTaskForm();
+  else if (active === 'users') showUserForm();
+  else showProjectForm();
+};
+
+// ============== PROJECT FORM ==============
+function showProjectForm() {
+  if (user.role !== 'Admin') return toast('Only Admins can create projects', 'error');
+  openModal(`
+    <h2>Create Project</h2>
+    <form id="projForm">
+      <div class="form-group"><label>Name</label><input name="name" required></div>
+      <div class="form-group"><label>Description</label><textarea name="description" rows="2"></textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group"><label>Start Date</label><input type="date" name="start_date" value="${new Date().toISOString().split('T')[0]}"></div>
+        <div class="form-group"><label>Due Date</label><input type="date" name="due_date" required></div>
+      </div>
+      <div class="form-group">
+        <label>Initial Phase</label>
+        <select name="phase">${PHASES.map(p => `<option>${p}</option>`).join('')}</select>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="flex:1;">Create</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('projForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api.post('/projects/', {
+        name: f.name.value,
+        description: f.description.value,
+        start_date: f.start_date.value ? f.start_date.value + 'T00:00:00' : null,
+        due_date: f.due_date.value ? f.due_date.value + 'T23:59:59' : null,
+        phase: f.phase.value,
+      });
+      toast('Project created! 🎉');
+      closeModal();
+      loadData();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+}
+
+async function editProject(pid) {
+  const p = projects.find(x => x.id === pid);
+  if (!p) return;
+  openModal(`
+    <h2>Edit Project</h2>
+    <form id="editProjForm">
+      <div class="form-group"><label>Name</label><input name="name" value="${p.name}" required></div>
+      <div class="form-group"><label>Description</label><textarea name="description" rows="2">${p.description||''}</textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group"><label>Start Date</label><input type="date" name="start_date" value="${p.start_date?p.start_date.split('T')[0]:''}"></div>
+        <div class="form-group"><label>Due Date</label><input type="date" name="due_date" value="${p.due_date?p.due_date.split('T')[0]:''}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group"><label>Phase</label>
+          <select name="phase">${PHASES.map(ph => `<option ${ph===p.phase?'selected':''}>${ph}</option>`).join('')}</select>
+        </div>
+        <div class="form-group"><label>Progress (%)</label><input type="number" name="progress" min="0" max="100" value="${p.progress}"></div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="flex:1;">Save</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('editProjForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api.patch(`/projects/${pid}`, {
+        name: f.name.value,
+        description: f.description.value,
+        start_date: f.start_date.value ? f.start_date.value + 'T00:00:00' : null,
+        due_date: f.due_date.value ? f.due_date.value + 'T23:59:59' : null,
+        phase: f.phase.value,
+        progress: parseInt(f.progress.value),
+      });
+      toast('Updated ✨');
+      closeModal();
+      await loadData();
+      openProjectDetail(pid);
+    } catch (err) { toast(err.message, 'error'); }
+  };
+}
+
+// ============== MEMBER MANAGEMENT ==============
+function showAddMemberForm(pid) {
+  const project = projects.find(p => p.id === pid);
+  const memberIds = project.members.map(m => m.id);
+  const available = users.filter(u => !memberIds.includes(u.id));
+  if (available.length === 0) return toast('All users are already members', 'error');
+
+  openModal(`
+    <h2>Add Member</h2>
+    <form id="memberForm">
+      <div class="form-group"><label>Select User</label>
+        <select name="user_id" required>
+          ${available.map(u => `<option value="${u.id}">${u.name} - ${u.designation} (${u.role})</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="flex:1;">Add</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('memberForm').onsubmit = async (e) => {
+    e.preventDefault();
+    try {
+      await api.post(`/projects/${pid}/members`, { user_id: parseInt(e.target.user_id.value) });
+      toast('Member added! 🎉');
+      closeModal();
+      await loadData();
+      openProjectDetail(pid);
+    } catch (err) { toast(err.message, 'error'); }
+  };
+}
+
+async function removeMember(pid, uid) {
+  if (!confirm('Remove this member from project?')) return;
+  try {
+    await api.del(`/projects/${pid}/members/${uid}`);
+    toast('Member removed');
+    await loadData();
+    openProjectDetail(pid);
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ============== PROGRESS REPORTS ==============
+function showReportForm(pid) {
+  const project = projects.find(p => p.id === pid);
+  openModal(`
+    <h2>Add Progress Report</h2>
+    <p style="color:var(--muted);margin-bottom:16px;">For: <strong>${project.name}</strong></p>
+    <form id="reportForm">
+      <div class="form-group">
+        <label>Progress Percentage: <span id="pctVal">${project.progress}</span>%</label>
+        <input type="range" name="progress_percentage" min="0" max="100" value="${project.progress}"
+               oninput="document.getElementById('pctVal').textContent=this.value">
+      </div>
+      <div class="form-group">
+        <label>Report</label>
+        <textarea name="content" rows="5" required placeholder="What did you work on? What's the status?"></textarea>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="flex:1;">Submit</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('reportForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api.post(`/projects/${pid}/reports`, {
+        content: f.content.value,
+        progress_percentage: parseInt(f.progress_percentage.value),
+      });
+      toast('Report submitted! 📝');
+      closeModal();
+      await loadData();
+      openProjectDetail(pid);
+    } catch (err) { toast(err.message, 'error'); }
+  };
+}
+
+// ============== TASK FORM ==============
+function showTaskForm() {
+  if (projects.length === 0) return toast('Create a project first', 'error');
+  const projOptions = projects.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  const userOptions = '<option value="">Unassigned</option>' + users.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+  openModal(`
+    <h2>Create Task</h2>
+    <form id="taskForm">
+      <div class="form-group"><label>Title</label><input name="title" required></div>
+      <div class="form-group"><label>Description</label><textarea name="description" rows="2"></textarea></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group"><label>Project</label><select name="project_id">${projOptions}</select></div>
+        <div class="form-group"><label>Assignee</label><select name="assignee_id">${userOptions}</select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
+        <div class="form-group"><label>Priority</label>
+          <select name="priority"><option>Low</option><option selected>Medium</option><option>High</option></select>
+        </div>
+        <div class="form-group"><label>Status</label>
+          <select name="status"><option>Todo</option><option>In Progress</option><option>Done</option></select>
+        </div>
+        <div class="form-group"><label>Due Date</label><input type="date" name="due_date"></div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="flex:1;">Create Task</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('taskForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api.post('/tasks/', {
+        title: f.title.value,
+        description: f.description.value,
+        project_id: parseInt(f.project_id.value),
+        assignee_id: f.assignee_id.value ? parseInt(f.assignee_id.value) : null,
+        priority: f.priority.value,
+        status: f.status.value,
+        due_date: f.due_date.value ? f.due_date.value + 'T23:59:59' : null
+      });
+      toast('Task created! ✅');
+      closeModal();
+      loadData();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+}
+
+async function editTask(id) {
+  const t = tasks.find(x => x.id === id);
+  if (!t) return;
+  const userOptions = '<option value="">Unassigned</option>' +
+    users.map(u => `<option value="${u.id}" ${t.assignee && t.assignee.id===u.id ? 'selected' : ''}>${u.name}</option>`).join('');
+  openModal(`
+    <h2>Edit Task</h2>
+    <form id="editForm">
+      <div class="form-group"><label>Title</label><input name="title" value="${t.title}" required></div>
+      <div class="form-group"><label>Description</label><textarea name="description" rows="2">${t.description||''}</textarea></div>
+      <div class="form-group"><label>Assignee</label><select name="assignee_id">${userOptions}</select></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group"><label>Status</label>
+          <select name="status">${['Todo','In Progress','Done'].map(s => `<option ${s===t.status?'selected':''}>${s}</option>`).join('')}</select>
+        </div>
+        <div class="form-group"><label>Priority</label>
+          <select name="priority">${['Low','Medium','High'].map(p => `<option ${p===t.priority?'selected':''}>${p}</option>`).join('')}</select>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <button type="button" class="btn btn-danger" onclick="deleteTask(${id})"><i class="fas fa-trash"></i></button>
+        <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="flex:1;">Save</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('editForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api.patch(`/tasks/${id}`, {
+        title: f.title.value,
+        description: f.description.value,
+        status: f.status.value,
+        priority: f.priority.value,
+        assignee_id: f.assignee_id.value ? parseInt(f.assignee_id.value) : null,
+      });
+      toast('Updated ✨');
+      closeModal();
+      loadData();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+}
+
+async function deleteTask(id) {
+  if (!confirm('Delete this task?')) return;
+  try {
+    await api.del(`/tasks/${id}`);
+    toast('Task deleted');
+    closeModal();
+    loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ============== USER MANAGEMENT (Admin) ==============
+function showUserForm() {
+  if (user.role !== 'Admin') return toast('Admins only', 'error');
+  openModal(`
+    <h2>Create User</h2>
+    <form id="userForm">
+      <div class="form-group"><label>Full Name</label><input name="name" required></div>
+      <div class="form-group"><label>Email</label><input type="email" name="email" required></div>
+      <div class="form-group"><label>Password</label><input type="password" name="password" required minlength="6"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group"><label>Role</label>
+          <select name="role"><option>Member</option><option>Admin</option></select>
+        </div>
+        <div class="form-group"><label>Designation</label>
+          <input name="designation" value="Team Member" placeholder="e.g., Senior Developer">
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="flex:1;">Create</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('userForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api.post('/users/', {
+        name: f.name.value, email: f.email.value, password: f.password.value,
+        role: f.role.value, designation: f.designation.value,
+      });
+      toast('User created! 👤');
+      closeModal();
+      loadData();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+}
+
+function editUser(uid) {
+  const u = users.find(x => x.id === uid);
+  if (!u) return;
+  openModal(`
+    <h2>Edit User</h2>
+    <form id="editUserForm">
+      <div class="form-group"><label>Full Name</label><input name="name" value="${u.name}" required></div>
+      <div class="form-group"><label>Email</label><input value="${u.email}" disabled></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-group"><label>Role</label>
+          <select name="role">
+            <option ${u.role==='Member'?'selected':''}>Member</option>
+            <option ${u.role==='Admin'?'selected':''}>Admin</option>
+          </select>
+        </div>
+        <div class="form-group"><label>Designation</label><input name="designation" value="${u.designation}"></div>
+      </div>
+      <div style="display:flex;gap:12px;">
+        <button type="button" class="btn btn-ghost" onclick="closeModal()" style="flex:1;">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="flex:1;">Save</button>
+      </div>
+    </form>
+  `);
+  document.getElementById('editUserForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const f = e.target;
+    try {
+      await api.patch(`/users/${uid}`, {
+        name: f.name.value, role: f.role.value, designation: f.designation.value,
+      });
+      toast('Updated ✨');
+      closeModal();
+      loadData();
+    } catch (err) { toast(err.message, 'error'); }
+  };
+}
+
+async function deleteUser(uid) {
+  if (!confirm('Delete this user permanently?')) return;
+  try {
+    await api.del(`/users/${uid}`);
+    toast('User deleted');
+    loadData();
+  } catch (e) { toast(e.message, 'error'); }
+}
+
+// ============== REAL-TIME AUTO-REFRESH (every 10s) ==============
+async function refreshAll() {
+  try {
+    const calls = [
+      api.get('/projects/'),
+      api.get('/tasks/'),
+      api.get('/users/'),
+      api.get('/projects/alerts'),
+    ];
+    if (user.role === 'Admin') calls.push(api.get('/users/leaderboard'));
+    
+    const results = await Promise.all(calls);
+    projects = results[0];
+    tasks = results[1];
+    users = results[2];
+    alerts = results[3];
+    if (user.role === 'Admin') leaderboard = results[4];
+
+    // Re-render everything
+    renderNotifications();
+    renderUsers();
+    renderLeaderboard();
+    
+    // Update stats live
+    document.getElementById('statProjects').textContent = projects.length;
+    document.getElementById('statTasks').textContent = tasks.length;
+    document.getElementById('statDone').textContent = tasks.filter(t => t.status === 'Done').length;
+    document.getElementById('statOverdue').textContent = tasks.filter(t => t.overdue).length;
+    
+    // Re-render current visible tab
+    const activeTab = document.querySelector('.nav-item.active')?.dataset.tab;
+    if (activeTab === 'overview') renderOverview();
+    else if (activeTab === 'projects') renderProjects();
+    else if (activeTab === 'tasks') renderTasks();
+  } catch (e) {
+    console.error('Refresh failed:', e);
+  }
+}
+
+// Auto-refresh every 10 seconds
+setInterval(refreshAll, 10000);
+
+// Also refresh when window regains focus
+window.addEventListener('focus', refreshAll);
+
+// ============== INITIAL LOAD ==============
+loadData().then(() => showOverdueToasts());
+</script>
+{% endblock %}

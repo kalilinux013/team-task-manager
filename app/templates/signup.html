@@ -1,0 +1,31 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="logo">⚡ TaskFlow</div>
+    <p class="subtitle">Create your team account</p>
+    <form id="signupForm">
+      <div class="form-group">
+        <label>Full Name</label><input name="name" required>
+      </div>
+      <div class="form-group">
+        <label>Email</label><input type="email" name="email" required>
+      </div>
+      <div class="form-group">
+        <label>Password</label><input type="password" name="password" required minlength="6">
+      </div>
+      <div class="form-group">
+        <label>Role</label>
+        <select name="role">
+          <option value="Member">Member</option>
+          <option value="Admin">Admin</option>
+        </select>
+      </div>
+      <button class="btn btn-primary" type="submit">
+        <i class="fas fa-user-plus"></i> Create Account
+      </button>
+    </form>
+    <p class="auth-link">Have an account? <a href="/">Sign in</a></p>
+  </div>
+</div>
+{% endblock %}
