@@ -4,15 +4,7 @@ A beautiful, full-stack team task management application with role-based access 
 
 ## 🌐 Live Demo
 
-🔗 **[https://your-app.up.railway.app](https://your-app.up.railway.app)**
-
-> Replace with your actual Railway URL
-
-### Test Credentials
-- **Admin:** `admin@taskflow.com` / `admin123`
-- **Member:** `member@taskflow.com` / `member123`
-
----
+🔗 web-production-6bd45.up.railway.app
 
 ## ✨ Key Features
 
