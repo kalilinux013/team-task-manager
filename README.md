@@ -4,7 +4,7 @@ A beautiful, full-stack team task management application with role-based access 
 
 ## 🌐 Live Demo
 
-🔗 web-production-6bd45.up.railway.app
+🔗 https://web-production-6bd45.up.railway.app/
 
 ## ✨ Key Features
 
