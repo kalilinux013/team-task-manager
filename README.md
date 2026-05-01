@@ -4,7 +4,13 @@ A beautiful, full-stack team task management application with role-based access 
 
 ## 🌐 Live Demo
 
-🔗 https://web-production-6bd45.up.railway.app/
+🔗 **[https://web-production-6bd45.up.railway.app](https://web-production-6bd45.up.railway.app)**
+
+### Test Credentials
+- **Admin:** Sign up with role "Admin" to access all features
+- **Member:** Sign up with role "Member" to see restricted view
+
+---
 
 ## ✨ Key Features
 
@@ -20,7 +26,7 @@ A beautiful, full-stack team task management application with role-based access 
 - Real-time progress bar
 - Team member management per project
 
-### ✅ Task Management  
+### ✅ Task Management
 - Create tasks with priority (Low/Medium/High)
 - Status tracking (Todo / In Progress / Done)
 - Assign tasks to team members
@@ -41,7 +47,7 @@ A beautiful, full-stack team task management application with role-based access 
 
 ### 🔔 Smart Notifications
 - Overdue project alerts
-- Due-soon reminders (within 3-7 days)
+- Due-soon reminders
 - Auto-toast notifications
 - Notification bell with badge counter
 
@@ -93,7 +99,7 @@ A beautiful, full-stack team task management application with role-based access 
 
 ### Setup
 
-```bash
+\`\`\`bash
 # Clone repository
 git clone https://github.com/YOUR_USERNAME/team-task-manager.git
 cd team-task-manager
@@ -105,12 +111,94 @@ source venv/bin/activate  # Windows: venv\Scripts\activate
 # Install dependencies
 pip install -r requirements.txt
 
-# Create .env file
-cat > .env << EOF
-SECRET_KEY=your-secret-key-here
-JWT_SECRET_KEY=your-jwt-secret-here
-DATABASE_URL=sqlite:///taskmanager.db
-EOF
+# Create .env file with your secrets
+echo "SECRET_KEY=your-secret-key-here" > .env
+echo "JWT_SECRET_KEY=your-jwt-secret-here" >> .env
+echo "DATABASE_URL=sqlite:///taskmanager.db" >> .env
 
 # Run the app
 python run.py
+\`\`\`
+
+Visit **http://localhost:8000**
+
+---
+
+## 📡 API Endpoints
+
+### Authentication
+- `POST /api/auth/signup` — Create account
+- `POST /api/auth/login` — Login
+- `GET /api/auth/me` — Current user info
+
+### Projects
+- `GET /api/projects/` — List projects
+- `POST /api/projects/` — Create project (Admin)
+- `GET /api/projects/<id>` — Project details
+- `PATCH /api/projects/<id>` — Update project
+- `DELETE /api/projects/<id>` — Delete project (Admin)
+- `POST /api/projects/<id>/members` — Add member
+- `DELETE /api/projects/<id>/members/<uid>` — Remove member
+- `GET /api/projects/<id>/reports` — List progress reports
+- `POST /api/projects/<id>/reports` — Add progress report
+- `GET /api/projects/alerts` — Get notifications
+
+### Tasks
+- `GET /api/tasks/` — List tasks
+- `POST /api/tasks/` — Create task
+- `PATCH /api/tasks/<id>` — Update task
+- `DELETE /api/tasks/<id>` — Delete task
+
+### Users (Admin)
+- `GET /api/users/` — List all users
+- `POST /api/users/` — Create user
+- `PATCH /api/users/<id>` — Update user
+- `DELETE /api/users/<id>` — Delete user (Members only)
+- `GET /api/users/leaderboard` — Performance leaderboard
+
+---
+
+## 📂 Project Structure
+
+\`\`\`
+team-task-manager/
+├── app/
+│   ├── __init__.py          # Flask app factory
+│   ├── models.py            # Database models
+│   ├── decorators.py        # Auth decorators
+│   ├── routes/
+│   │   ├── auth.py
+│   │   ├── projects.py
+│   │   ├── tasks.py
+│   │   ├── users.py
+│   │   └── dashboard.py
+│   ├── static/
+│   │   ├── css/style.css
+│   │   └── js/
+│   │       ├── animations.js
+│   │       └── app.js
+│   └── templates/
+│       ├── base.html
+│       ├── login.html
+│       ├── signup.html
+│       └── dashboard.html
+├── config.py
+├── run.py
+├── requirements.txt
+├── Procfile
+├── railway.json
+└── README.md
+\`\`\`
+
+---
+
+## 👨‍💻 Author
+
+**VIVEK KUMAR SINGH**
+- GitHub: [@kalilinux013](https://github.com/kalilinux013)
+
+---
+
+## 📜 License
+
+MIT License — feel free to use this project!
