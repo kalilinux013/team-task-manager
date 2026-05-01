@@ -101,7 +101,7 @@ A beautiful, full-stack team task management application with role-based access 
 
 \`\`\`bash
 # Clone repository
-git clone https://github.com/YOUR_USERNAME/team-task-manager.git
+git clone https://github.com/kalilinux013/team-task-manager.git
 cd team-task-manager
 
 # Create virtual environment
